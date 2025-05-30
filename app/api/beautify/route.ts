@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { saveResume, extractResumeTitle } from "@/lib/resume-storage"
+import { ReportStorage } from "@/lib/report-storage"
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
@@ -54,7 +56,11 @@ const SYSTEM_PROMPT = `# 苹果风格简历生成器提示词
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("API Key exists:", !!DEEPSEEK_API_KEY)
+    console.log("API Key length:", DEEPSEEK_API_KEY?.length || 0)
+    
     if (!DEEPSEEK_API_KEY) {
+      console.error("DEEPSEEK_API_KEY is not configured")
       return NextResponse.json({ error: "服务配置错误：API密钥未配置" }, { status: 500 })
     }
 
@@ -70,6 +76,8 @@ ${resume}
 
 请严格按照系统提示词的要求输出纯HTML代码。`
 
+    console.log("Making request to DeepSeek API...")
+    
     const response = await fetch(DEEPSEEK_API_URL, {
       method: "POST",
       headers: {
@@ -84,13 +92,18 @@ ${resume}
         ],
         stream: false,
         temperature: 0.3, // 较低的温度以确保输出格式稳定
-        max_tokens: 4000,
+        max_tokens: 8192,
       }),
     })
+
+    console.log("Response status:", response.status)
+    console.log("Response ok:", response.ok)
 
     if (!response.ok) {
       const errorData = await response.text()
       console.error("DeepSeek API Error (Beautify):", errorData)
+      console.error("Response status:", response.status)
+      console.error("Response headers:", Object.fromEntries(response.headers.entries()))
       return NextResponse.json({ error: "AI服务暂时不可用，请稍后再试" }, { status: 500 })
     }
 
@@ -106,13 +119,33 @@ ${resume}
     // 确保返回的是HTML
     const cleanedHtml = htmlContent.replace(/^```html\s*|```$/g, "").trim()
 
+    // 保存简历到存储系统
+    const title = extractResumeTitle(resume)
+    const savedReport = ReportStorage.save({
+      title,
+      resume,
+      htmlContent: cleanedHtml,
+      viewCount: 0
+    }, "beautified_html")
+
+    // 生成简历URL
+    const resumeUrl = `/resume/${savedReport.id}`
+
     return NextResponse.json({
       success: true,
       htmlContent: cleanedHtml,
+      resumeId: savedReport.id,
+      resumeUrl,
+      title,
       usage: data.usage || null,
     })
   } catch (error) {
     console.error("API Error (Beautify):", error)
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : 'Unknown'
+    })
     return NextResponse.json({ error: "服务器内部错误，请稍后再试" }, { status: 500 })
   }
 }

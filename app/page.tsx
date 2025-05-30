@@ -10,8 +10,8 @@ import { AnalysisDialog } from "@/components/analysis-dialog"
 import { LoadingAnimation } from "@/components/loading-animation"
 import { ReportStorage } from "@/lib/report-storage"
 import { useRouter } from "next/navigation"
-import { TestDataButton } from "@/components/test-data-button"
 import { Tabs } from "@/components/tabs"
+import Link from "next/link"
 
 type ActiveMode = "analysis" | "beautify"
 
@@ -98,18 +98,12 @@ export default function Home() {
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || "美化失败")
 
-        setResultContent(data.htmlContent) // Store HTML content
-        setShowResultDialog(true) // Show dialog for HTML preview
-
-        const savedReport = ReportStorage.save(
-          {
-            title: ReportStorage.generateTitle(resume, "beautified_html"),
-            resume,
-            htmlContent: data.htmlContent,
-          },
-          "beautified_html",
-        )
-        // No automatic redirect for HTML, user can view in dialog or go to report page later
+        // 直接跳转到简历详情页面
+        if (data.resumeUrl) {
+          router.push(data.resumeUrl)
+        } else {
+          setError("生成简历成功，但跳转失败")
+        }
       } catch (err) {
         handleError(err)
       } finally {
@@ -153,12 +147,6 @@ export default function Home() {
         </div>
 
         <Tabs tabs={tabs} activeTab={activeMode} onTabChange={(tabId) => setActiveMode(tabId as ActiveMode)} />
-
-        {process.env.NODE_ENV === "development" && (
-          <div className="mb-4">
-            <TestDataButton onDataAdded={() => window.location.reload()} />
-          </div>
-        )}
 
         {error && (
           <Alert className="mb-6 border-red-200 bg-red-50">
